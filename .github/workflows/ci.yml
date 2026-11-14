@@ -1,0 +1,30 @@
+name: Integrated .NET and embedded C++ checks
+on:
+  push:
+  pull_request:
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build the API
+        run: dotnet build backend/IntegratedMonitor.Api/IntegratedMonitor.Api.csproj --configuration Release
+      - name: Run domain tests
+        run: dotnet run --project backend/IntegratedMonitor.Tests/IntegratedMonitor.Tests.csproj --configuration Release
+  embedded:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile firmware core on host
+        run: g++ -std=c++17 -Wall -Wextra -Werror -Ifirmware/include firmware/src/MonitorLogic.cpp firmware/test/core_tests.cpp -o core-tests
+      - name: Run embedded logic checks
+        run: ./core-tests
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify simulator syntax
+        run: python3 -m py_compile simulator/simulate.py
