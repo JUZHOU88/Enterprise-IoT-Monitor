@@ -42,7 +42,9 @@ public sealed class TelemetryStore
     public IngestResult Ingest(TelemetryInput input, DateTimeOffset? receivedAtUtc = null)
     {
         ArgumentNullException.ThrowIfNull(input);
-        if (!Identifier.IsMatch(input.DeviceId ?? "") || !Identifier.IsMatch(input.EventId ?? ""))
+        var deviceId = input.DeviceId ?? throw new ArgumentException("DeviceId is required.");
+        var eventId = input.EventId ?? throw new ArgumentException("EventId is required.");
+        if (!Identifier.IsMatch(deviceId) || !Identifier.IsMatch(eventId))
             throw new ArgumentException("DeviceId and EventId must contain 1-64 safe characters.");
         if (input.UptimeMs < 0 || input.UptimeMs > 4_294_967_295L)
             throw new ArgumentException("UptimeMs is outside the supported range.");
@@ -55,17 +57,17 @@ public sealed class TelemetryStore
 
         lock (_gate)
         {
-            if (!_devices.TryGetValue(input.DeviceId, out var history))
+            if (!_devices.TryGetValue(deviceId, out var history))
             {
                 if (_devices.Count >= _maxDevices)
                     throw new InvalidOperationException("Device limit reached.");
                 history = new DeviceHistory();
-                _devices.Add(input.DeviceId, history);
+                _devices.Add(deviceId, history);
             }
 
-            if (history.EventIds.Contains(input.EventId))
+            if (history.EventIds.Contains(eventId))
             {
-                var prior = history.Readings.First(r => r.EventId == input.EventId);
+                var prior = history.Readings.First(r => r.EventId == eventId);
                 if (prior.TemperatureC != input.TemperatureC ||
                     prior.DoorOpen != input.DoorOpen || prior.SensorOk != input.SensorOk ||
                     prior.UptimeMs != input.UptimeMs)
@@ -78,7 +80,7 @@ public sealed class TelemetryStore
             var reading = new TelemetryReading(input.DeviceId, input.EventId, input.TemperatureC,
                 input.DoorOpen, input.SensorOk, input.UptimeMs,
                 receivedAtUtc ?? DateTimeOffset.UtcNow, alert);
-            history.EventIds.Add(input.EventId);
+            history.EventIds.Add(eventId);
             history.Readings.AddLast(reading);
             if (history.Readings.Count > _maxReadingsPerDevice)
             {
