@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Enterprise IoT Monitor</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui,-apple-system,Segoe UI,sans-serif;background:#0b1725;color:#e6f0f4}
+body{margin:auto;max-width:1100px;padding:2rem}
+header{border-bottom:1px solid #375063;padding-bottom:1rem;margin-bottom:1.5rem}
+h1{font-size:2rem;margin:.3rem 0}
+p,small{color:#adc2cf}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
+.card{background:#122839;border:1px solid #2d5360;border-radius:12px;padding:1rem}
+.pill{display:inline-block;border-radius:40px;background:#174a48;color:#97eee0;padding:.3rem .65rem;font-size:.8rem}
+.alarm{background:#4e2d30;color:#ffc8c8}
+.value{font-size:2rem;margin:.5rem 0}
+button{background:#167c78;border:0;border-radius:8px;color:white;padding:.6rem 1rem;cursor:pointer}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid #2d5360;padding:.6rem}
+.scroller{overflow:auto}
+</style>
+</head>
+<body>
+<header>
+<small>JUSTICE ZHOU · EMBEDDED + ENTERPRISE SOFTWARE DEMONSTRATION</small>
+<h1>Enterprise IoT Monitor</h1>
+<p>ESP32 telemetry → ASP.NET Core API → monitoring dashboard</p>
+<small>Local development demo · In-memory storage · Not for clinical use</small>
+</header>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+<h2>Connected devices</h2><button id="refresh">Refresh now</button></div>
+<div id="devices" class="grid"><p>Loading…</p></div>
+<h2>Recent telemetry</h2><p id="selection">Select a device to view its readings.</p>
+<div class="card scroller"><table><thead><tr><th>Received (UTC)</th><th>Temperature</th><th>Door</th><th>Sensor</th><th>Status</th></tr></thead>
+<tbody id="readings"></tbody></table></div>
+<script>
+let selected=null;
+const deviceBox=document.getElementById('devices');
+const rows=document.getElementById('readings');
+function create(tag,cls){const e=document.createElement(tag);if(cls)e.className=cls;return e;}
+function addText(parent,tag,value,cls){const e=create(tag,cls);e.textContent=String(value);parent.append(e);return e;}
+async function refresh(){
+  try{
+    const r=await fetch('/api/devices',{cache:'no-store'});
+    if(!r.ok)throw Error('Server unavailable');
+    const data=await r.json();deviceBox.replaceChildren();
+    if(!data.length)addText(deviceBox,'p','No devices yet. Start the Python simulator or an ESP32.');
+    for(const d of data){
+      const card=create('article','card');addText(card,'h3',d.deviceId);
+      addText(card,'div',d.temperatureC===null?'—':d.temperatureC.toFixed(2)+' °C','value');
+      addText(card,'span',d.alert?'ATTENTION':'NORMAL','pill'+(d.alert?' alarm':''));
+      addText(card,'p','Door: '+(d.doorOpen?'OPEN':'closed')+' · Sensor: '+(d.sensorOk?'OK':'fault'));
+      addText(card,'small','Last reading: '+d.lastSeenUtc);
+      const b=addText(card,'button','View readings');
+      b.addEventListener('click',()=>{selected=d.deviceId;refreshReadings();});
+      deviceBox.append(card);
+    }
+    if(selected)await refreshReadings();
+  }catch(error){deviceBox.replaceChildren();addText(deviceBox,'p','Unable to load telemetry: '+error.message);}
+}
+async function refreshReadings(){
+ if(!selected)return;
+ const r=await fetch('/api/devices/'+encodeURIComponent(selected)+'/readings?limit=30',{cache:'no-store'});
+ if(!r.ok)return;
+ const data=await r.json();
+ document.getElementById('selection').textContent='Device: '+selected+' · latest 30 readings';
+ rows.replaceChildren();
+ for(const d of data.slice().reverse()){
+  const tr=create('tr');
+  const vals=[d.receivedAtUtc,d.temperatureC===null?'—':d.temperatureC.toFixed(2)+' °C',
+   d.doorOpen?'Open':'Closed',d.sensorOk?'OK':'Fault',d.alert?'Attention':'Normal'];
+  for(const val of vals)addText(tr,'td',val);
+  rows.append(tr);
+ }
+}
+document.getElementById('refresh').addEventListener('click',refresh);
+refresh();setInterval(refresh,4000);
+</script>
+</body></html>
